@@ -17,7 +17,7 @@ pygame.init()
 pygame.display.set_caption("Maze Explorer")
 
 # |=| Settings |=|
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 # Settings dictionary
 settings = {
