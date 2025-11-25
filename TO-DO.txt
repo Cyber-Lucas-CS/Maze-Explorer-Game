@@ -1,0 +1,17 @@
+Win condition?
+
+TITLE SCREEN - PARTIALLY DONE
+    Settings - IMPLEMENTED  -  May add more settings later. Currently; mouse sensitivity, FOV
+    Difficulty - DONE
+
+Boss fight level?
+    Implement boss type enemy
+        faster, more damage, etc
+    Implement some kind of item pickup that damages the boss
+    Implement on-screen boss healthbar
+    Make exit on boss level only unlock when boss is defeated
+    Difficulty integration
+        higher difficulty - more boss health, more boss speed
+        Hard difficulty - boss has one standard enemy minion
+        Extra Hard difficulty - boss has two standard enemy minions
+    Make healing items respawn on boss level instead of despawning
