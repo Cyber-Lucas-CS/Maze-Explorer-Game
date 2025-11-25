@@ -10,11 +10,11 @@ class Health_Pickup:
     def __init__(self, maze: Maze.Maze, amount: int, tile: int):
         self.MAP = maze
         self.HealthAmount = amount
-        self.pos = None
+        self.pos: tuple[int, int] = None
         self.TILE = tile
 
     # Finds an open position in the maze, ignoring certain positions to avoid conflicts
-    def find_open_position(self, excludePos: list):
+    def find_open_position(self, excludePos: list[tuple[int, int]]):
         while True:
             y = random.randint(1, len(self.MAP) - 1)
             x = random.randint(1, len(self.MAP[0]) - 1)
@@ -22,7 +22,7 @@ class Health_Pickup:
                 return x, y
 
     # Spawns the healing item
-    def Spawn(self, excludePos: list):
+    def Spawn(self, excludePos: list[tuple[int, int]]):
         x, y = self.find_open_position(excludePos)
         self.pos = (x, y)
 
@@ -141,7 +141,7 @@ class Health_Pickup:
     # ---------------------------------------------------------------------
     # Collision Check
     # ---------------------------------------------------------------------
-    def check_collision_with_player(self, player_x, player_y):
+    def check_collision_with_player(self, player_x: float, player_y: float):
         """Returns True if player collides with the item"""
         x, y = self.pos
         world_x = x * self.TILE + self.TILE / 2

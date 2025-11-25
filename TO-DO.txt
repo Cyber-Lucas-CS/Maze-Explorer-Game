@@ -1,17 +1,18 @@
 Win condition?
+    Beat boss level
 
 TITLE SCREEN - PARTIALLY DONE
     Settings - IMPLEMENTED  -  May add more settings later. Currently; mouse sensitivity, FOV
     Difficulty - DONE
 
 Boss fight level?
-    Implement boss type enemy
+    Implement boss type enemy - Mostly done - still need to spawn it and despawn it, etc.
         faster, more damage, etc
-    Implement some kind of item pickup that damages the boss
+    Implement some kind of item pickup that damages the boss - Mostly done - still need to make it damage boss
     Implement on-screen boss healthbar
-    Make exit on boss level only unlock when boss is defeated
-    Difficulty integration
+    Make exit on boss level only unlock when boss is defeated - Mostly done - need to make key not render on map/minimap
+    Difficulty integration - DONE
         higher difficulty - more boss health, more boss speed
         Hard difficulty - boss has one standard enemy minion
         Extra Hard difficulty - boss has two standard enemy minions
-    Make healing items respawn on boss level instead of despawning
+    Make healing items respawn on boss level instead of despawning - DONE

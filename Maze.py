@@ -5,7 +5,7 @@ import random
 
 
 class Maze:
-    def __init__(self, size, guaranteed_roll=False):
+    def __init__(self, size: int, guaranteed_roll=False):
         self.size = size
         self.width = size * 2 + 1
         self.height = size * 2 + 1

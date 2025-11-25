@@ -5,13 +5,14 @@ import math
 import random
 import pygame
 import heapq
+import Maze
 
 
-class Enemy:
-    def __init__(self, maze, tile_size, speed=1.2):
+class Boss_Enemy:
+    def __init__(self, maze: Maze.Maze, tile_size: int, speed=1.2):
         self.MAP = maze
         self.TILE = tile_size
-        self.speed = speed
+        self.speed = speed + 0.3
         self.x, self.y = self.random_open_position()
         self.path = []  # list of (tile_x, tile_y)
         self.state = "wander"  # "wander" or "chase"
@@ -20,6 +21,7 @@ class Enemy:
         self.detection_range = 8  # tiles
         self.memory_time = 5.0  # how long enemy remembers player after losing sight
         self.health = 200
+        self.dead = False
 
     def random_open_position(self):
         """Finds a random walkable tile in the maze."""
@@ -29,10 +31,17 @@ class Enemy:
             if self.MAP[j][i] == 0:
                 return (i + 0.5) * self.TILE, (j + 0.5) * self.TILE
 
+    def _health_check(self):
+        if self.health <= 0:
+            self.dead = True
+
+    def _despawn(self):
+        self.x, self.y = None, None
+
     # ---------------------------------------------------------------------
     # A* PATHFINDING
     # ---------------------------------------------------------------------
-    def find_path(self, start, goal):
+    def find_path(self, start: tuple[int, int], goal: tuple[int, int]):
         """A* pathfinding algorithm on the MAP grid."""
         rows, cols = len(self.MAP), len(self.MAP[0])
         open_set = []
@@ -70,7 +79,7 @@ class Enemy:
     # ---------------------------------------------------------------------
     # --- Line of Sight (LOS) Check ---
     # ---------------------------------------------------------------------
-    def can_see_player(self, player_x, player_y):
+    def can_see_player(self, player_x: float, player_y: float):
         """Check if enemy has line of sight to the player using raycasting."""
         x0, y0 = int(self.x // self.TILE), int(self.y // self.TILE)
         x1, y1 = int(player_x // self.TILE), int(player_y // self.TILE)
@@ -93,7 +102,11 @@ class Enemy:
     # ---------------------------------------------------------------------
     # --- Update with LOS + memory ---
     # ---------------------------------------------------------------------
-    def update(self, player_x, player_y, delta_time):
+    def update(self, player_x: float, player_y: float, delta_time: float):
+        self._health_check()
+        if self.dead:
+            self._despawn()
+            return
         player_tile = (int(player_x // self.TILE), int(player_y // self.TILE))
         enemy_tile = (int(self.x // self.TILE), int(self.y // self.TILE))
         dist_to_player = math.hypot(player_x - self.x, player_y - self.y) / self.TILE
@@ -149,7 +162,15 @@ class Enemy:
     # RENDERING
     # ---------------------------------------------------------------------
     def draw(
-        self, screen, player_x, player_y, player_angle, fov, width, height, z_buffer
+        self,
+        screen: pygame.Surface,
+        player_x: float,
+        player_y: float,
+        player_angle: float,
+        fov: float,
+        width: int,
+        height: int,
+        z_buffer: list[float],
     ):
         """
         Simple pseudo-3D sprite rendering placeholder.
@@ -195,7 +216,7 @@ class Enemy:
         # --- Project enemy sprite ---
         PROJ_COEFF = 3 * (len(z_buffer) / (2 * math.tan(HALF_FOV))) * TILE
         proj_height = PROJ_COEFF / dist
-        proj_height *= 0.3  # adjust size of enemy sprite
+        proj_height *= 0.5  # adjust size of enemy sprite
         h = int(proj_height)
         w = h
         screen_x = int(
@@ -205,13 +226,13 @@ class Enemy:
 
         # --- Draw enemy ---
         enemy_surface = pygame.Surface((w, h), pygame.SRCALPHA)
-        pygame.draw.circle(enemy_surface, (200, 30, 30, 220), (w // 2, h // 2), h // 2)
+        pygame.draw.circle(enemy_surface, (255, 30, 30, 220), (w // 2, h // 2), h // 2)
         rect = enemy_surface.get_rect(center=(screen_x, top + h // 2))
         screen.blit(enemy_surface, rect)
 
     # ---------------------------------------------------------------------
     # Collision Check
     # ---------------------------------------------------------------------
-    def check_collision_with_player(self, player_x, player_y):
+    def check_collision_with_player(self, player_x: float, player_y: float):
         """Returns True if the enemy touches the player."""
         return math.hypot(player_x - self.x, player_y - self.y) < self.TILE * 0.3

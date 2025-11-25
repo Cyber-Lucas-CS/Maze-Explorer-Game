@@ -10,6 +10,8 @@ import os
 import random
 import Maze
 import Enemy
+import Boss
+import AtkBall
 import HealthItem
 
 # Initialize Pygame
@@ -37,18 +39,23 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 HALF_HEIGHT = HEIGHT // 2
 TILE = 100
 START_MAZE_SIZE = 10
-MAZE_SIZE = min(START_MAZE_SIZE + (score // 5), 25)
+MAZE_SIZE = min(START_MAZE_SIZE + (score // 4), 25)
 FRAMERATE = 60
 ENEMY_SPAWN_LEVEL = 5
 spawn_enemy = True
-enemy = None
-enemy1 = None
+enemy: Enemy.Enemy = None
+enemy1: Enemy.Enemy = None
+
+Boss_Level = False
+Boss_Level_Score = 20
+Boss_Beaten = False
+boss: Boss.Boss_Enemy = None
 
 # |=| Item and Minimap Settings |=|
 show_map = False
 show_exits_minimap = False
 has_map = False
-map_pos = None
+map_pos: tuple[int, int] = None
 map_pickup_message = ""
 map_pickup_time = 0
 MAP_ITEM_COLOR = (0, 200, 255)  # cyan for pickup icon
@@ -56,7 +63,9 @@ DYNAMIC_MINIMAP_SIZE = 7  # tiles
 healing_spawn_rate = 1.0  # Multiplier
 healing_items_per_level = int(4 * healing_spawn_rate)  # Items per level
 healing_amount = 10
-health_item_list = list()
+health_item_list: list[HealthItem.Health_Pickup] = list()
+
+damage_item_list: list[AtkBall.Damage_Item] = list()
 
 # Key settings
 has_key = False
@@ -65,7 +74,7 @@ key_pickup_time = 0
 
 # Torch loss settings
 has_torch = True
-torch_pos = None
+torch_pos: tuple[int, int] = None
 torch_lost_once = False  # track if player has already lost their torch once
 TORCH_LOSS_CHANCE = 10  # 10% chance per level after first loss (tweak for testing)
 torch_message_list = [
@@ -201,7 +210,9 @@ SCALE = WIDTH // NUM_RAYS
 
 
 # --- Title Screen Function ---
-def title_screen(screen, WIDTH, HEIGHT, font):
+def title_screen(
+    screen: pygame.Surface, WIDTH: int, HEIGHT: int, font: pygame.font.Font
+):
     """Display the title screen with Start, Settings, and Quit buttons, and fade into game."""
     clock = pygame.time.Clock()
 
@@ -304,7 +315,9 @@ def title_screen(screen, WIDTH, HEIGHT, font):
 
 
 # --- Difficulty Select Screen ---
-def difficulty_select(screen, WIDTH, HEIGHT, font):
+def difficulty_select(
+    screen: pygame.Surface, WIDTH: int, HEIGHT: int, font: pygame.font.Font
+):
     difficulties = ["Easy", "Normal", "Hard", "Extra Hard"]
     selected = 0
     selecting = True
@@ -337,7 +350,7 @@ def difficulty_select(screen, WIDTH, HEIGHT, font):
 
 
 # --- Pause Menu ---
-def pause_menu(screen, WIDTH, HEIGHT, font):
+def pause_menu(screen: pygame.Surface, WIDTH: int, HEIGHT: int, font: pygame.font.Font):
     """Display pause menu and suspend gameplay until resumed or quit."""
     clock = pygame.time.Clock()
 
@@ -443,7 +456,9 @@ def pause_menu(screen, WIDTH, HEIGHT, font):
 
 
 # --- Settings Menu ---
-def settings_menu(screen, WIDTH, HEIGHT, font):
+def settings_menu(
+    screen: pygame.Surface, WIDTH: int, HEIGHT: int, font: pygame.font.Font
+):
     global slider_dragging
     clock = pygame.time.Clock()
 
@@ -582,7 +597,9 @@ def settings_menu(screen, WIDTH, HEIGHT, font):
 
 
 # --- Death Screen ---
-def death_screen(screen, WIDTH, HEIGHT, font):
+def death_screen(
+    screen: pygame.Surface, WIDTH: int, HEIGHT: int, font: pygame.font.Font
+):
     pygame.mouse.set_visible(True)
     pygame.event.set_grab(False)
 
@@ -702,16 +719,12 @@ def mapping(x, y):
 
 
 # Ceiling Shading
-def draw_shaded_ceiling(screen, base_color, min_depth=1.0, max_depth=140.0):
-    """
-    Draw a vertically shaded ceiling that is BRIGHTER at the top of the screen
-    and DARKER at the horizon (y = HALF_HEIGHT), using the same lighting formula as the walls.
-
-    - base_color: tuple(R,G,B)
-    - has_torch: bool (controls shade_amount)
-    - min_depth: depth at top of screen (brightest)
-    - max_depth: depth at horizon (darkest)
-    """
+def draw_shaded_ceiling(
+    screen: pygame.Surface,
+    base_color: tuple[int, int, int],
+    min_depth=1.0,
+    max_depth=140.0,
+):
     r0, g0, b0 = base_color
 
     shade_amount = 0.0001 if has_torch else 0.00025
@@ -721,7 +734,6 @@ def draw_shaded_ceiling(screen, base_color, min_depth=1.0, max_depth=140.0):
     span = end_y - start_y
     if span <= 0:
         return
-
     for i in range(span):
         y = start_y + i
         t = i / (span - 1) if span > 1 else 1.0
@@ -740,7 +752,12 @@ def draw_shaded_ceiling(screen, base_color, min_depth=1.0, max_depth=140.0):
 
 
 # Floor Shading
-def draw_shaded_floor(screen, base_color, min_depth=1.0, max_depth=140.0):
+def draw_shaded_floor(
+    screen: pygame.Surface,
+    base_color: tuple[int, int, int],
+    min_depth=1.0,
+    max_depth=140.0,
+):
     """
     Draw a vertically shaded floor that is BRIGHTER near the player (bottom of screen)
     and DARKER at the horizon, using the same lighting formula as the walls.
@@ -785,7 +802,9 @@ def draw_shaded_floor(screen, base_color, min_depth=1.0, max_depth=140.0):
 
 
 # Raycasting that fills a z-buffer for occlusion checks
-def ray_casting(screen, player_pos, player_angle):
+def ray_casting(
+    screen: pygame.Surface, player_pos: tuple[float, float], player_angle: float
+):
     global z_buffer
     px, py = player_pos
     px /= TILE
@@ -914,7 +933,12 @@ def ray_casting(screen, player_pos, player_angle):
         cur_angle += DELTA_ANGLE
 
 
-def draw_exits(screen, player_pos, player_angle, max_distance_tiles=6):
+def draw_exits(
+    screen: pygame.Surface,
+    player_pos: tuple[float, float],
+    player_angle: float,
+    max_distance_tiles=6,
+):
     """
     Draw exit ovals only when player is within `max_distance_tiles`.
 
@@ -987,7 +1011,7 @@ def draw_exits(screen, player_pos, player_angle, max_distance_tiles=6):
         # Pulse color
         pulse = (math.sin(pygame.time.get_ticks() * 0.006) + 1) / 2
         glow = int(180 + 75 * pulse)
-        if has_key:
+        if has_key or (Boss_Level and Boss_Beaten):
             color = (50, glow, 50, 200)  # RGBA (alpha ~200)
         else:
             color = (glow, 50, 50, 200)
@@ -1002,7 +1026,9 @@ def draw_exits(screen, player_pos, player_angle, max_distance_tiles=6):
     screen.blit(exit_surface, (0, 0))
 
 
-def draw_key_in_world(screen, player_pos, player_angle):
+def draw_key_in_world(
+    screen: pygame.Surface, player_pos: tuple[float, float], player_angle: float
+):
     """Draws the floating key sprite in-world if not yet collected."""
     if has_key or maze_key is None:
         return  # already collected or undefined
@@ -1068,7 +1094,12 @@ def draw_key_in_world(screen, player_pos, player_angle):
     screen.blit(key_surf_scaled, rect)
 
 
-def draw_torch_in_world(screen, player_pos, player_angle, max_distance_tiles=4):
+def draw_torch_in_world(
+    screen: pygame.Surface,
+    player_pos: tuple[float, float],
+    player_angle: float,
+    max_distance_tiles=4,
+):
     """
     Draws the in-world torch only if the player does not have it.
     Uses the same projection and occlusion logic as draw_key_in_world.
@@ -1145,7 +1176,12 @@ def draw_torch_in_world(screen, player_pos, player_angle, max_distance_tiles=4):
     screen.blit(torch_surf_scaled, rect)
 
 
-def draw_map_item_in_world(screen, player_pos, player_angle, max_distance_tiles=4):
+def draw_map_item_in_world(
+    screen: pygame.Surface,
+    player_pos: tuple[float, float],
+    player_angle: float,
+    max_distance_tiles=4,
+):
     """
     Draws the in-world map item (cyan) using identical logic to draw_torch_in_world.
     """
@@ -1241,7 +1277,7 @@ def draw_map():
             if (
                 show_exits_minimap and (i, j) in maze_end
             ):  # Display exits as green if enabled
-                if has_key:
+                if has_key or (Boss_Level and Boss_Beaten):
                     color = (50, 200, 50)
                 else:
                     color = (200, 50, 50)
@@ -1261,6 +1297,10 @@ def draw_map():
                 for item in health_item_list:
                     if item.pos is not None and (i, j) == item.pos:
                         color = (40, 255, 40)
+            if show_exits_minimap and (len(damage_item_list) > 0):
+                for item in damage_item_list:
+                    if item.pos is not None and (i, j) == item.pos:
+                        color = (40, 40, 255)
             rect = pygame.Rect(
                 offset_x + i * cell_w, offset_y + j * cell_h, cell_w - 1, cell_h - 1
             )
@@ -1329,7 +1369,7 @@ def draw_dynamic_minimap():
                 tile = MAP[ty][tx]
                 color = (70, 70, 70) if tile == 1 else (20, 20, 20)
                 if (tx, ty) in maze_end and has_map:
-                    if has_key:
+                    if has_key or (Boss_Level and Boss_Beaten):
                         color = (50, 200, 50)
                     else:
                         color = (200, 50, 50)
@@ -1480,11 +1520,11 @@ while running:
             show_exits_minimap = not show_exits_minimap
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_z and DEBUG_MODE:
             try:
-                if score < 4:
+                if score < 19:
                     score += 1
                 score_text = f"Level: {score}"
                 text_surface = game_font.render(score_text, True, (170, 0, 255))
-                MAZE_SIZE = min(START_MAZE_SIZE + (score // 5), 25)
+                MAZE_SIZE = min(START_MAZE_SIZE + (score // 4), 25)
                 # Generate new random maze
                 maze_generator = Maze.Maze(MAZE_SIZE)
                 MAP, maze_end, maze_key = maze_generator.generate()
@@ -1887,14 +1927,21 @@ while running:
                         player_health = 100
                     item.Despawn()
 
+    # --- Damage Item Pickup and Despawn ---
+    for item in damage_item_list:
+        if item.pos is not None:
+            if item.check_collision_with_player(player_x, player_y):
+                # Deal damage to boss enemy
+                item.Despawn()
+
     # --- Check if player reached an exit ---
     player_tile = (int(player_x // TILE), int(player_y // TILE))
-    if player_tile in maze_end and has_key:
+    if player_tile in maze_end and (has_key or (Boss_Level and Boss_Beaten)):
         # Increase score
         score += 1
         score_text = f"Level: {score}"
         text_surface = game_font.render(score_text, True, (170, 0, 255))
-        MAZE_SIZE = min(START_MAZE_SIZE + (score // 5), 25)
+        MAZE_SIZE = min(START_MAZE_SIZE + (score // 4), 25)
 
         # --- Fade-out effect ---
         fade_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -1974,6 +2021,12 @@ while running:
 
         # --- Generate a new maze ---
         try:
+            if score == Boss_Level_Score:
+                Boss_Level = True
+                if not (
+                    current_difficulty == "Hard" or current_difficulty == "Extra Hard"
+                ):
+                    spawn_enemy = False
             maze_generator = Maze.Maze(MAZE_SIZE)
             MAP, maze_end, maze_key = maze_generator.generate()
             has_key = False
@@ -2029,6 +2082,24 @@ while running:
                     item.Spawn(excludeList)
                     excludeList.append(item.pos)
 
+            # --- Initialize damage items ---
+            # USES HEALING ITEM STATS FOR NOW
+            if Boss_Level:
+                damage_item_list = list()
+                for i in range(healing_items_per_level):
+                    damage_item_list.append(
+                        AtkBall.Damage_Item(MAP, healing_amount, TILE)
+                    )
+
+            if len(damage_item_list) > 0:
+                excludeList = [(1, 1), maze_key, torch_pos]
+                for end in maze_end:
+                    excludeList.append(end)
+                for item in health_item_list:
+                    excludeList.append(item.pos)
+                for item in damage_item_list:
+                    item.Spawn(excludeList)
+                    excludeList.append(item.pos)
         except:
             print("Maze generation failed, try again")
 
@@ -2037,6 +2108,11 @@ while running:
             enemy = Enemy.Enemy(MAP, TILE, enemy_speed)
             if enemy_count == 2:
                 enemy1 = Enemy.Enemy(MAP, TILE, enemy_speed)
+        elif score >= ENEMY_SPAWN_LEVEL and not spawn_enemy:
+            enemy = None
+            enemy1 = None
+
+        # Spawn Boss Enemy
 
         # Reset player position and angle
         player_x, player_y = TILE * 1.5, TILE * 1.5
@@ -2056,18 +2132,50 @@ while running:
     ceiling_color = (25, 25, 25)
     floor_color = (25, 25, 25)
 
+    excludeList = [(1, 1), maze_key, torch_pos]
+    for end in maze_end:
+        excludeList.append(end)
+    if len(health_item_list) > 0:
+        for item in health_item_list:
+            if item.pos is not None:
+                excludeList.append(item.pos)
+    if len(damage_item_list) > 0:
+        for item in damage_item_list:
+            if item.pos is not None:
+                excludeList.append(item.pos)
+
     # screen.fill(ceiling_color)
     draw_shaded_ceiling(screen, ceiling_color)
-
     draw_shaded_floor(screen, floor_color)
 
     ray_casting(screen, (player_x, player_y), player_angle)
-    draw_key_in_world(screen, (player_x, player_y), player_angle)
+    if not Boss_Level:
+        draw_key_in_world(screen, (player_x, player_y), player_angle)
     draw_torch_in_world(screen, (player_x, player_y), player_angle)
     draw_map_item_in_world(screen, (player_x, player_y), player_angle)
     draw_exits(screen, (player_x, player_y), player_angle)
     if len(health_item_list) > 0:
         for item in health_item_list:
+            if Boss_Level and item.pos is None:
+                item.Spawn(excludeList)
+                excludeList.append(item.pos)
+            if item.pos is not None:
+                item.Draw(
+                    screen,
+                    player_x,
+                    player_y,
+                    player_angle,
+                    FOV,
+                    WIDTH,
+                    HEIGHT,
+                    z_buffer,
+                    NUM_RAYS,
+                )
+    if len(damage_item_list) > 0:
+        for item in damage_item_list:
+            if Boss_Level and item.pos is None:
+                item.Spawn(excludeList)
+                excludeList.append(item.pos)
             if item.pos is not None:
                 item.Draw(
                     screen,
