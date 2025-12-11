@@ -47,7 +47,8 @@ enemy: Enemy.Enemy = None
 enemy1: Enemy.Enemy = None
 
 Boss_Level = False
-Boss_Level_Score = 20
+# Boss_Level_Score = [10, 20, 30]
+Boss_Level_Score = [20]  # For testing
 Boss_Beaten = False
 boss: Boss.Boss_Enemy = None
 
@@ -1030,7 +1031,7 @@ def draw_key_in_world(
     screen: pygame.Surface, player_pos: tuple[float, float], player_angle: float
 ):
     """Draws the floating key sprite in-world if not yet collected."""
-    if has_key or maze_key is None:
+    if has_key or maze_key is None or Boss_Level:
         return  # already collected or undefined
 
     px, py = player_pos
@@ -1282,7 +1283,10 @@ def draw_map():
                 else:
                     color = (200, 50, 50)
             if (
-                show_exits_minimap and (i, j) == maze_key and not has_key
+                show_exits_minimap
+                and (i, j) == maze_key
+                and not has_key
+                and not Boss_Level
             ):  # Display key as yellow if enabled
                 color = (200, 200, 50)
             if (
@@ -1339,6 +1343,10 @@ def draw_map():
                 e1x = offset_x + (enemy1.x / (len(MAP[0]) * TILE)) * MAP_SIZE
                 e1y = offset_y + (enemy1.y / (len(MAP) * TILE)) * MAP_SIZE
                 pygame.draw.circle(screen, (255, 50, 50), (int(e1x), int(e1y)), 3)
+            if boss and not boss.dead:
+                bx = offset_x + (boss.x / (len(MAP[0]) * TILE)) * MAP_SIZE
+                by = offset_y + (boss.y / (len(MAP) * TILE)) * MAP_SIZE
+                pygame.draw.circle(screen, (255, 20, 20), (int(bx), int(by)), 3)
         except NameError:
             pass  # enemy might not exist yet
 
@@ -1378,7 +1386,7 @@ def draw_dynamic_minimap():
 
                 # show collectibles/enemy only if has_map
                 if has_map:
-                    if maze_key == (tx, ty) and not has_key:
+                    if maze_key == (tx, ty) and not has_key and not Boss_Level:
                         pygame.draw.rect(
                             screen, (200, 200, 50), (sx, sy, MAP_SCALE, MAP_SCALE)
                         )
@@ -1402,12 +1410,26 @@ def draw_dynamic_minimap():
                             pygame.draw.rect(
                                 screen, (255, 50, 50), (sx, sy, MAP_SCALE, MAP_SCALE)
                             )
+                    if boss and not boss.dead:
+                        bx, by = int(boss.x // TILE), int(boss.y // TILE)
+                        if (bx, by) == (tx, ty):
+                            pygame.draw.rect(
+                                screen, (255, 20, 20), (sx, sy, MAP_SCALE, MAP_SCALE)
+                            )
                     if len(health_item_list) > 0:
                         for item in health_item_list:
                             if item.pos is not None and (tx, ty) == item.pos:
                                 pygame.draw.rect(
                                     screen,
-                                    (255, 40, 40),
+                                    (40, 255, 40),
+                                    (sx, sy, MAP_SCALE, MAP_SCALE),
+                                )
+                    if len(damage_item_list) > 0:
+                        for item in damage_item_list:
+                            if item.pos is not None and (tx, ty) == item.pos:
+                                pygame.draw.rect(
+                                    screen,
+                                    (40, 40, 255),
                                     (sx, sy, MAP_SCALE, MAP_SCALE),
                                 )
 
@@ -1437,6 +1459,35 @@ def draw_hud():
     h_text_rect = h_text_surface.get_rect()
     h_text_rect.bottomright = ((WIDTH - 10), (HEIGHT - 10))
     screen.blit(h_text_surface, h_text_rect)
+
+    # Draw boss health bar on boss levels
+    if Boss_Level:
+        if boss.health > 0:
+            boss_bar_width = WIDTH // 3
+            boss_bar_x = (WIDTH // 2) - (boss_bar_width // 2)
+            boss_bar_y = HEIGHT - 10 - 32
+
+            # Gray Background
+            pygame.draw.rect(
+                screen, (100, 100, 100), (boss_bar_x, boss_bar_y, boss_bar_width, 32)
+            )
+
+            # Red Bar
+            health_ratio = boss.health / boss.max_health
+            red_width = int((boss_bar_width - 2) * health_ratio)
+
+            pygame.draw.rect(
+                screen,
+                (200, 40, 40),
+                ((boss_bar_x + 1), (boss_bar_y + 1), red_width, 30),  # red
+            )
+
+            # Text
+            boss_health_text = f"{boss.health}/{boss.max_health}"
+            boss_h_text_surface = game_font.render(boss_health_text, True, (50, 50, 50))
+            boss_h_text_rect = boss_h_text_surface.get_rect()
+            boss_h_text_rect.center = ((WIDTH // 2), (boss_bar_y + 16))
+            screen.blit(boss_h_text_surface, boss_h_text_rect)
 
 
 # --- Main Game Loop --- #
@@ -1877,6 +1928,100 @@ while running:
                     return_to_main_menu = True
                     break  # exit game loop and go back to your main menu logic
 
+    # Boss enemy
+    if boss and not boss.dead:
+        boss.update(player_x, player_y, delta_time)
+
+        # Collision with player
+        if boss.check_collision_with_player(player_x, player_y):
+            player_health -= enemy_damage
+
+            # Lose a random item
+            take_list = list()
+            if has_key:
+                take_list.append("key")
+            if has_torch:
+                take_list.append("torch")
+            if has_map:
+                take_list.append("map")
+
+            if len(take_list) > 0 and lose_item:
+                lost_item = random.choice(take_list)
+                print(f"You have lost your {lost_item}!")
+
+                if lost_item == "key":
+                    has_key = False
+                elif lost_item == "torch":
+                    has_torch = False
+                elif lost_item == "map":
+                    has_map = False
+                    show_exits_minimap = False
+
+            # Reset boss position - can't re-initiate because need to keep consistent health
+            boss.x, boss.y = boss.random_open_position()
+            boss.path = []
+            boss.state = "wander"
+            boss.target_tile = None
+            boss.repath_timer = 0
+
+            # Check for player death
+            if player_health <= 0:
+                choice = death_screen(screen, WIDTH, HEIGHT, font)
+
+                if choice == "restart":
+                    # Reset score and regenerate maze
+                    score = 0
+                    MAZE_SIZE = START_MAZE_SIZE
+                    player_health = 100
+                    # however your code handles maze regen
+                    score_text = f"Level: {score}"
+                    text_surface = font.render(score_text, True, (170, 0, 255))
+                    # --- Fade-out effect ---
+                    fade_surface = pygame.Surface((WIDTH, HEIGHT))
+                    fade_surface.fill((0, 0, 0))
+                    for alpha in range(0, 255, 10):
+                        fade_surface.set_alpha(alpha)
+                        screen.blit(fade_surface, (0, 0))
+                        pygame.display.flip()
+                        pygame.time.delay(15)
+
+                    has_torch = True
+                    has_map = False
+                    torch_lost_once = False
+
+                    try:
+                        maze_generator = Maze.Maze(MAZE_SIZE)
+                        MAP, maze_end, maze_key = maze_generator.generate()
+                        has_key = False
+                        MAP = [[1 if cell == 1 else 0 for cell in row] for row in MAP]
+                        # --- Torch placement ---
+                        torch_pos = None
+                        if TORCH_ALWAYS_SPAWNS:
+                            spawn_torch = True
+                        else:
+                            spawn_torch = random.choice(True, False)
+                        if not has_torch and spawn_torch:
+                            # Find a random walkable tile not near the player or key
+                            walkable = [
+                                (x, y)
+                                for y, row in enumerate(MAP)
+                                for x, cell in enumerate(row)
+                                if cell == 0
+                                and (x, y)
+                                != (int(player_x // TILE), int(player_y // TILE))
+                            ]
+                            if walkable:
+                                torch_pos = random.choice(walkable)
+
+                    except:
+                        print("Maze generation failed, try again")
+
+                    continue  # restart game loop
+
+                elif choice == "menu":
+                    return_to_main_menu = True
+                    break  # exit game loop and go back to your main menu logic
+
     # --- Collision detection ---
     next_x = player_x + dx
     next_y = player_y + dy
@@ -1932,6 +2077,10 @@ while running:
         if item.pos is not None:
             if item.check_collision_with_player(player_x, player_y):
                 # Deal damage to boss enemy
+                if boss:
+                    boss.health -= item.damage
+                    boss.update(player_x, player_y, delta_time)
+                    Boss_Beaten = boss.dead
                 item.Despawn()
 
     # --- Check if player reached an exit ---
@@ -2021,7 +2170,7 @@ while running:
 
         # --- Generate a new maze ---
         try:
-            if score == Boss_Level_Score:
+            if score in Boss_Level_Score:
                 Boss_Level = True
                 if not (
                     current_difficulty == "Hard" or current_difficulty == "Extra Hard"
@@ -2111,6 +2260,8 @@ while running:
         elif score >= ENEMY_SPAWN_LEVEL and not spawn_enemy:
             enemy = None
             enemy1 = None
+        if Boss_Level:
+            boss = Boss.Boss_Enemy(MAP, TILE, enemy_speed)
 
         # Spawn Boss Enemy
 
@@ -2201,7 +2352,25 @@ while running:
         )
     if enemy1:
         enemy1.draw(
-            screen, player_x, player_y, player_angle, FOV, WIDTH, HEIGHT, z_buffer
+            screen,
+            player_x,
+            player_y,
+            player_angle,
+            FOV,
+            WIDTH,
+            HEIGHT,
+            z_buffer,
+        )
+    if boss and not boss.dead:
+        boss.draw(
+            screen,
+            player_x,
+            player_y,
+            player_angle,
+            FOV,
+            WIDTH,
+            HEIGHT,
+            z_buffer,
         )
     draw_map()
     draw_dynamic_minimap()

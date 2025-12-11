@@ -20,6 +20,7 @@ class Boss_Enemy:
         self.repath_timer = 0  # time accumulator for periodic path recalculation
         self.detection_range = 8  # tiles
         self.memory_time = 5.0  # how long enemy remembers player after losing sight
+        self.max_health = 200
         self.health = 200
         self.dead = False
 
